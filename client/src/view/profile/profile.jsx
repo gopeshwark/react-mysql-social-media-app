@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useContext, useState } from "react";
 import FacebookTwoToneIcon from "@mui/icons-material/FacebookTwoTone";
 import LinkedInIcon from "@mui/icons-material/LinkedIn";
 import InstagramIcon from "@mui/icons-material/Instagram";
@@ -10,18 +10,54 @@ import EmailOutlinedIcon from "@mui/icons-material/EmailOutlined";
 import MoreVertIcon from "@mui/icons-material/MoreVert";
 import "./profile.scss";
 import Posts from "../../components/posts/posts";
+import { useLocation } from "react-router-dom";
+import { makeRequest } from "../../axios-instance";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { AuthContext } from "../../context/auth-context";
+import Update from "../../components/update/update";
 
 const Profile = () => {
+  const [openModal, setOpenModal] = useState(false);
+  const userId = parseInt(useLocation()?.pathname?.split("/")?.[2]);
+  const {currentUser} = useContext(AuthContext);
+
+  const {isLoading, error, data} = useQuery(["user"], () => {
+    return makeRequest.get("/users/find/"+userId).then(res => {
+      return res.data;
+    })
+  })
+
+   const {isLoading: rIsLoading, data: relationshipData} = useQuery(["relationships"], () => {
+    return makeRequest.get("/relationships?followedUserId="+userId).then(res => {
+      return res.data;
+    })
+  })
+
+  const queryClient = useQueryClient();
+
+  const mutation = useMutation((following) => {
+    if(following) return makeRequest.delete("/relationships?userId="+userId);
+    return makeRequest.post("/relationships", {userId});
+  },{
+    onSuccess: () => {
+      queryClient.invalidateQueries(["relationship"])
+    }
+  })
+
+  const handleFollow = () => {
+    mutation.mutate(relationshipData?.includes(currentUser?.id));
+  }
+
   return (
     <div className="profile">
-      <div className="images">
+      {isLoading ? "loading..." : <><div className="images">
         <img
-          src="https://images.pexels.com/photos/13440765/pexels-photo-13440765.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=2"
+          src={"/uploads/"+data?.coverPic}
           alt=""
           className="cover"
         />
         <img
-          src="https://images.pexels.com/photos/14028501/pexels-photo-14028501.jpeg?auto=compress&cs=tinysrgb&w=1600&lazy=load"
+          src={"/uploads/"+data?.profilePic}
           alt=""
           className="profilePic"
         />
@@ -46,26 +82,27 @@ const Profile = () => {
             </a>
           </div>
           <div className="center">
-            <span>John Doe</span>
+            <span>{data?.name}</span>
             <div className="info">
               <div className="item">
                 <PlaceIcon />
-                <span>USA</span>
+                <span>{data?.city}</span>
               </div>
               <div className="item">
                 <LanguageIcon />
-                <span>website.com</span>
+                <span>{data?.website}</span>
               </div>
             </div>
-            <button>follow</button>
+            {rIsLoading ? "Loading..." : userId === currentUser?.id ? <button onClick={() => setOpenModal(true)}>update</button> : <button onClick={handleFollow}>{relationshipData?.includes(currentUser.id) ? "Following" : "Follow"}</button>}
           </div>
           <div className="right">
             <EmailOutlinedIcon />
             <MoreVertIcon />
           </div>
         </div>
-        <Posts />
-      </div>
+        <Posts userId={userId} />
+      </div></>}
+      {openModal && <Update setOpenModalCb={setOpenModal} user={data}/>}
     </div>
   );
 };

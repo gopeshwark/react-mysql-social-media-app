@@ -6,12 +6,50 @@ import TextsmsOutlinedIcon from "@mui/icons-material/TextsmsOutlined";
 import ShareOutlinedIcon from "@mui/icons-material/ShareOutlined";
 import MoreHorizIcon from "@mui/icons-material/MoreHoriz";
 import Comments from "../comments/comments";
-import { useState } from "react";
+import { useState, useContext } from "react";
+import moment from "moment";
+import {useQuery, useQueryClient, useMutation} from "@tanstack/react-query";
+import {makeRequest} from "../../axios-instance";
+import {AuthContext} from "../../context/auth-context";
 
 const Post = ({ post }) => {
   const [commentOpen, setCommentOpen] = useState(false);
-  // Temporary
-  const liked = false;
+  const {currentUser} = useContext(AuthContext);
+  const [menuOpen, setMenuOpen] = useState(false);
+  
+  const {isLoading, error, data} = useQuery(["likes", post.id], () => 
+    makeRequest.get("/likes?postId="+post.id).then(res => res.data)
+  )
+
+  const queryClient = useQueryClient();
+
+  const mutation = useMutation((liked) => {
+    if(liked) return makeRequest.delete("/likes?postId=" + post.id);
+    return makeRequest.post("/likes", {postId: post.id})
+    }, {
+      onSuccess: () => {
+        queryClient.invalidateQueries(["likes"]);
+      }
+    }
+  )
+
+  const deleteMutation = useMutation((postId) => {
+    return makeRequest.delete("/posts/"+postId)
+    }, {
+      onSuccess: () => {
+        queryClient.invalidateQueries(["posts"]);
+      }
+    }
+  )
+
+  const handleLike = (e) => {
+    mutation.mutate(data?.includes(currentUser.id))
+  }
+
+  const handleDelete = () => {
+    deleteMutation.mutate(post.id);
+  }
+  
   return (
     <div className="post">
       <div className="user">
@@ -24,19 +62,20 @@ const Post = ({ post }) => {
             >
               <span className="name">{post.name}</span>
             </Link>
-            <span className="date">1 min ago</span>
+            <span className="date">{moment(post.createdAt).fromNow()}</span>
           </div>
         </div>
-        <MoreHorizIcon />
+        <MoreHorizIcon onClick={() => setMenuOpen(!menuOpen)}/>
+        {menuOpen && post.userId === currentUser.id && <button onClick={handleDelete}>delete</button>}
       </div>
       <div className="content">
         <p>{post.desc}</p>
-        <img src={post.img} alt="" />
+        <img src={`./uploads/${post.img}`} alt="" />
       </div>
       <div className="action">
         <div className="item">
-          {liked ? <FavoriteOutlinedIcon /> : <FavoriteBorderOutlinedIcon />}
-          12 Likes
+          {data?.includes(currentUser.id) ? <FavoriteOutlinedIcon style={{color: "red"}} onClick={handleLike}/> : <FavoriteBorderOutlinedIcon  onClick={handleLike}/>}
+          {data?.length} Likes
         </div>
         <div className="item" onClick={() => setCommentOpen(!commentOpen)}>
           <TextsmsOutlinedIcon />
@@ -47,7 +86,7 @@ const Post = ({ post }) => {
           Share
         </div>
       </div>
-      {commentOpen && <Comments />}
+      {commentOpen && <Comments postId={post.id} />}
     </div>
   );
 };
